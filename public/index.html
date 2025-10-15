@@ -30,6 +30,85 @@
             align-items: center;
         }
 
+        .room-list-section {
+            margin: 20px;
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid #e1e5e9;
+        }
+
+        .room-list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .room-list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            border: 1px solid #e1e5e9;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            background-color: #f8f9fa;
+        }
+
+        .room-list-item:hover {
+            background-color: #e8f0ff;
+        }
+
+        .room-info {
+            flex: 1;
+        }
+
+        .room-name {
+            font-weight: bold;
+            color: #183994;
+            margin-bottom: 5px;
+        }
+
+        .room-details {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .room-privacy {
+            background-color: #28a745;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+
+        .room-privacy.private {
+            background-color: #dc3545;
+        }
+
+        .btn-join-room {
+            background-color: #208BBF;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-join-room:hover {
+            background-color: #1a7ab0;
+        }
+
+        .no-rooms {
+            text-align: center;
+            color: #666;
+            padding: 40px;
+        }
+
         .room-section {
             display: flex;
             flex-direction: column;
@@ -41,6 +120,22 @@
             display: flex;
             gap: 10px;
             align-items: center;
+        }
+
+
+        .privacy-radio-group {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .password-input-group {
+            display: none;
+            margin-left: 20px;
+        }
+
+        .password-input-group.show {
+            display: block;
         }
 
         .room-input {
@@ -243,14 +338,36 @@
                 <div class="room-input-group">
                     <label for="roomInput">방 이름:</label>
                     <input type="text" id="roomInput" class="room-input" placeholder="영어/숫자만 입력" maxlength="20">
+                    <div class="privacy-radio-group">
+                        <label>
+                            <input type="radio" name="privacy" value="public" checked> 공개방
+                        </label>
+                        <label>
+                            <input type="radio" name="privacy" value="private"> 비공개방
+                        </label>
+                    </div>
                     <button id="createRoomBtn" class="btn-host">방 생성</button>
-                    <button id="joinRoomBtn" class="btn-viewer">방 참여</button>
+                    <div id="passwordInputGroup" class="password-input-group">
+                        <label for="roomPassword">비밀번호:</label>
+                        <input type="password" id="roomPassword" class="room-input" placeholder="비밀번호 입력" maxlength="50">
+                    </div>
                 </div>
                 <div id="roomError" class="error-message" style="color: #e74c3c; font-size: 12px; display: none;"></div>
             </div>
             <div id="joinedSection" class="room-section" style="display: none;">
                 <div>방: <span id="currentRoomId"></span> | 역할: <span id="currentRole"></span></div>
                 <button id="leaveRoomBtn" class="btn-viewer">방 나가기</button>
+            </div>
+        </div>
+
+        <!-- 방 목록 섹션 -->
+        <div class="room-list-section">
+            <div class="room-list-header">
+                <h2>방 목록</h2>
+                <button id="refreshRoomListBtn" class="btn-viewer" style="font-size: 14px; padding: 6px 12px;">새로고침</button>
+            </div>
+            <div id="roomListContainer">
+                <div class="no-rooms">방 목록을 불러오는 중...</div>
             </div>
         </div>
 
@@ -274,6 +391,7 @@
         <div id="status" class="status">
             역할을 선택해주세요.
         </div>
+
     </div>
 
     <!-- PDF.js 라이브러리 -->
@@ -293,17 +411,18 @@
         let currentRole = null;
         let isFullscreen = false;
 
-        // 방 생성/참여
+        // 방 생성
         document.getElementById('createRoomBtn').addEventListener('click', () => {
             createRoom();
         });
 
-        document.getElementById('joinRoomBtn').addEventListener('click', () => {
-            joinRoom();
-        });
-
         document.getElementById('leaveRoomBtn').addEventListener('click', () => {
             leaveRoom();
+        });
+
+        // 방 목록 새로고침
+        document.getElementById('refreshRoomListBtn').addEventListener('click', () => {
+            loadRoomList();
         });
 
         // 방 이름 입력 검증
@@ -316,10 +435,23 @@
             document.getElementById('roomError').textContent = isValid ? '' : '영어와 숫자만 입력 가능합니다.';
         });
 
-        // Enter 키로 방 참여
+        // privacy 설정 변경 이벤트
+        document.querySelectorAll('input[name="privacy"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const passwordGroup = document.getElementById('passwordInputGroup');
+                if (e.target.value === 'private') {
+                    passwordGroup.classList.add('show');
+                } else {
+                    passwordGroup.classList.remove('show');
+                    document.getElementById('roomPassword').value = '';
+                }
+            });
+        });
+
+        // Enter 키로 방 생성
         document.getElementById('roomInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
-                joinRoom();
+                createRoom();
             }
         });
 
@@ -335,13 +467,28 @@
                 return;
             }
 
+            const privacy = document.querySelector('input[name="privacy"]:checked').value;
+            const password = document.getElementById('roomPassword').value.trim();
+
+            if (privacy === 'private' && !password) {
+                showRoomError('비공개 방에는 비밀번호가 필요합니다.');
+                return;
+            }
+
             updateStatus('방 생성 중...');
 
             if (window.wsClient) {
-                window.wsClient.send({
+                const message = {
                     type: 'create_room',
-                    roomId: roomId
-                });
+                    roomId: roomId,
+                    privacy: privacy
+                };
+
+                if (privacy === 'private') {
+                    message.password = password;
+                }
+
+                window.wsClient.send(message);
             }
         }
 
@@ -359,12 +506,47 @@
 
             updateStatus('방 참여 중...');
 
-            if (window.wsClient) {
-                window.wsClient.send({
-                    type: 'join_room',
-                    roomId: roomId
+            // 방 목록에서 해당 방의 정보를 확인하여 private 방인지 체크
+            fetch('/rooms')
+                .then(response => response.json())
+                .then(data => {
+                    const room = data.rooms.find(r => r.roomId === roomId);
+
+                    if (room && room.privacy === 'private') {
+                        // 비밀번호 입력 프롬프트
+                        const password = prompt('비밀번호를 입력하세요:');
+                        if (!password) {
+                            updateStatus('방 참여가 취소되었습니다.');
+                            return;
+                        }
+
+                        if (window.wsClient) {
+                            window.wsClient.send({
+                                type: 'join_room',
+                                roomId: roomId,
+                                password: password
+                            });
+                        }
+                    } else {
+                        // 공개방 또는 존재하지 않는 방
+                        if (window.wsClient) {
+                            window.wsClient.send({
+                                type: 'join_room',
+                                roomId: roomId
+                            });
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('방 목록 조회 실패:', error);
+                    // 방 목록 조회 실패 시 일반 참여 시도
+                    if (window.wsClient) {
+                        window.wsClient.send({
+                            type: 'join_room',
+                            roomId: roomId
+                        });
+                    }
                 });
-            }
         }
 
         function leaveRoom() {
@@ -378,6 +560,9 @@
             document.getElementById('uploadSection').classList.remove('show');
             document.getElementById('viewerSection').classList.add('hidden');
             document.getElementById('roomInput').value = '';
+            document.getElementById('roomPassword').value = '';
+            document.querySelector('input[name="privacy"][value="public"]').checked = true;
+            document.getElementById('passwordInputGroup').classList.remove('show');
 
             updateStatus('방에서 나갔습니다.');
 
@@ -538,6 +723,9 @@
             document.getElementById('viewerSection').classList.remove('hidden');
 
             updateStatus(`${currentRole}로 방 ${roomId}에 참여했습니다.`);
+
+            // 방 목록 새로고침
+            loadRoomList();
         });
 
         window.addEventListener('room_error', (event) => {
@@ -684,6 +872,85 @@
         function handleResize() {
             if (isFullscreen && window.pdfViewer) {
                 window.pdfViewer.adjustScaleForFullscreen();
+            }
+        }
+
+        // 페이지 로드 시 방 목록 자동 로드
+        window.addEventListener('load', () => {
+            loadRoomList();
+        });
+
+        function loadRoomList() {
+            const container = document.getElementById('roomListContainer');
+            container.innerHTML = '<div class="no-rooms">방 목록을 불러오는 중...</div>';
+
+            fetch('/rooms')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.rooms.length > 0) {
+                        container.innerHTML = '';
+                        data.rooms.forEach(room => {
+                            const roomElement = createRoomElement(room);
+                            container.appendChild(roomElement);
+                        });
+                    } else {
+                        container.innerHTML = '<div class="no-rooms">현재 생성된 방이 없습니다.</div>';
+                    }
+                })
+                .catch(error => {
+                    console.error('방 목록 로드 실패:', error);
+                    container.innerHTML = '<div class="no-rooms">방 목록을 불러오는데 실패했습니다.</div>';
+                });
+        }
+
+        function createRoomElement(room) {
+            const roomDiv = document.createElement('div');
+            roomDiv.className = 'room-list-item';
+
+            const privacyText = room.privacy === 'private' ? '비공개' : '공개';
+            const pdfStatus = room.hasPdf ? 'PDF 있음' : 'PDF 없음';
+            const createdTime = new Date(room.createdAt).toLocaleString('ko-KR');
+
+            roomDiv.innerHTML = `
+                <div class="room-info">
+                    <div class="room-name">${room.roomId}</div>
+                    <div class="room-details">
+                        <span class="room-privacy ${room.privacy}">${privacyText}</span>
+                        | 참여자: ${room.clientCount}명 | ${pdfStatus} | 생성: ${createdTime}
+                    </div>
+                </div>
+                <button class="btn-join-room" onclick="joinRoomFromList('${room.roomId}', '${room.privacy}')">
+                    참여하기
+                </button>
+            `;
+
+            return roomDiv;
+        }
+
+        function joinRoomFromList(roomId, privacy) {
+            if (privacy === 'private') {
+                const password = prompt('비밀번호를 입력하세요:');
+                if (!password) {
+                    updateStatus('방 참여가 취소되었습니다.');
+                    return;
+                }
+
+                updateStatus('방 참여 중...');
+                if (window.wsClient) {
+                    window.wsClient.send({
+                        type: 'join_room',
+                        roomId: roomId,
+                        password: password
+                    });
+                }
+            } else {
+                updateStatus('방 참여 중...');
+                if (window.wsClient) {
+                    window.wsClient.send({
+                        type: 'join_room',
+                        roomId: roomId
+                    });
+                }
             }
         }
     </script>

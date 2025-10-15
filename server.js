@@ -11,18 +11,21 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 // 방별 상태 관리
-let rooms = new Map(); // roomId -> { pdf: currentPdf, page: currentPage, clients: Set<clientId> }
-let clients = new Map(); // clientId -> { ws, isHost, roomId }
+let rooms = new Map();
+let clients = new Map();
 
 // 방 생성 함수
-function createRoom(roomId) {
+function createRoom(roomId, privacy = "public", password = null) {
   if (!rooms.has(roomId)) {
     rooms.set(roomId, {
       pdf: null,
       page: 1,
       clients: new Set(),
+      privacy: privacy, // 'public' or 'private'
+      password: password, // 비밀번호 (private 방인 경우)
+      createdAt: new Date(),
     });
-    console.log(`방 생성됨: ${roomId}`);
+    console.log(`방 생성됨: ${roomId} (${privacy})`);
   }
   return rooms.get(roomId);
 }
@@ -70,6 +73,28 @@ const upload = multer({
   },
 });
 
+// 방 목록 조회 API
+app.get("/rooms", (req, res) => {
+  const roomList = [];
+  rooms.forEach((room, roomId) => {
+    roomList.push({
+      roomId: roomId,
+      privacy: room.privacy,
+      clientCount: room.clients.size,
+      hasPdf: room.pdf !== null,
+      createdAt: room.createdAt,
+    });
+  });
+
+  // 생성 시간 기준 내림차순 정렬
+  roomList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  res.json({
+    success: true,
+    rooms: roomList,
+  });
+});
+
 // PDF 업로드 API
 app.post("/upload", upload.single("pdf"), (req, res) => {
   if (!req.file) {
@@ -89,19 +114,6 @@ app.post("/upload", upload.single("pdf"), (req, res) => {
       filename: pdfInfo.filename,
       originalName: pdfInfo.originalName,
     },
-  });
-});
-
-// 현재 PDF 정보 조회 API
-app.get("/current-pdf", (req, res) => {
-  if (!currentPdf) {
-    return res.status(404).json({ error: "로드된 PDF가 없습니다." });
-  }
-
-  res.json({
-    filename: currentPdf.filename,
-    originalName: currentPdf.originalName,
-    page: currentPage,
   });
 });
 
@@ -178,13 +190,40 @@ function handleMessage(clientId, message) {
         return;
       }
 
-      const room = createRoom(message.roomId);
+      // privacy 설정 검증
+      const privacy = message.privacy || "public";
+      if (!["public", "private"].includes(privacy)) {
+        client.ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "잘못된 방 공개 설정입니다.",
+          })
+        );
+        return;
+      }
+
+      // private 방인 경우 비밀번호 검증
+      let password = null;
+      if (privacy === "private") {
+        if (!message.password || message.password.trim().length === 0) {
+          client.ws.send(
+            JSON.stringify({
+              type: "error",
+              message: "비공개 방에는 비밀번호가 필요합니다.",
+            })
+          );
+          return;
+        }
+        password = message.password.trim();
+      }
+
+      const room = createRoom(message.roomId, privacy, password);
       client.roomId = message.roomId;
       client.isHost = true;
       room.clients.add(clientId);
 
       console.log(
-        `방 생성 및 호스트 참여: ${message.roomId} (클라이언트: ${clientId})`
+        `방 생성 및 호스트 참여: ${message.roomId} (${privacy}) (클라이언트: ${clientId})`
       );
 
       // 방 생성 성공 응답
@@ -193,6 +232,7 @@ function handleMessage(clientId, message) {
           type: "room_joined",
           roomId: message.roomId,
           isHost: true,
+          privacy: privacy,
         })
       );
 
@@ -233,6 +273,22 @@ function handleMessage(clientId, message) {
         return;
       }
 
+      // private 방인 경우 비밀번호 검증
+      if (joinRoom.privacy === "private") {
+        if (
+          !message.password ||
+          message.password.trim() !== joinRoom.password
+        ) {
+          client.ws.send(
+            JSON.stringify({
+              type: "error",
+              message: "비밀번호가 일치하지 않습니다.",
+            })
+          );
+          return;
+        }
+      }
+
       client.roomId = message.roomId;
       client.isHost = false;
       joinRoom.clients.add(clientId);
@@ -245,6 +301,7 @@ function handleMessage(clientId, message) {
           type: "room_joined",
           roomId: message.roomId,
           isHost: false,
+          privacy: joinRoom.privacy,
         })
       );
 
