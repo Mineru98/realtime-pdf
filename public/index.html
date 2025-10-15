@@ -220,14 +220,80 @@
             transition: height 0.3s ease;
         }
 
-        .chat-section {
-            width: 300px;
+        /* FAB 채팅 스타일 */
+        .chat-fab {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .chat-fab-button {
+            position: relative;
+            width: 56px;
+            height: 56px;
+            background-color: #208BBF;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+
+        .chat-fab-button:hover {
+            background-color: #1a7ab0;
+            transform: scale(1.1);
+        }
+
+        .chat-icon {
+            font-size: 24px;
+            color: white;
+        }
+
+        .chat-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background-color: #dc3545;
+            color: white;
+            border-radius: 50%;
+            min-width: 14px;
+            height: 24px;
+            font-size: 12px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .chat-panel {
+            position: absolute;
+            bottom: 76px;
+            right: 0;
+            width: 320px;
+            max-height: 500px;
             background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .chat-header {
@@ -237,9 +303,39 @@
             border-radius: 8px 8px 0 0;
         }
 
+        .chat-header {
+            padding: 15px;
+            background-color: #183994;
+            color: white;
+            border-radius: 12px 12px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
         .chat-header h3 {
             margin: 0;
             font-size: 16px;
+        }
+
+        .close-chat-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background-color 0.2s;
+        }
+
+        .close-chat-btn:hover {
+            background-color: rgba(255, 255, 255, 0.2);
         }
 
         .chat-messages {
@@ -430,6 +526,16 @@
             overflow: auto;
         }
 
+        /* 전체화면 시 기본적으로 FAB 숨김 */
+        .viewer-section.fullscreen .chat-fab {
+            display: none;
+        }
+
+        /* 전체화면 시 메시지가 있을 때만 FAB 표시 */
+        .viewer-section.fullscreen .chat-fab.has-messages {
+            display: block;
+        }
+
         .viewer-section.fullscreen #pdfCanvas {
             position: absolute !important;
             top: 50%;
@@ -556,14 +662,22 @@
                     <button id="nextBtn">다음</button>
                 </div>
             </div>
-            <div class="chat-section">
-                <div class="chat-header">
-                    <h3>채팅</h3>
+            <!-- FAB 채팅 버튼 -->
+            <div id="chatFab" class="chat-fab">
+                <div class="chat-fab-button">
+                    <span class="chat-icon">💬</span>
+                    <span id="chatBadge" class="chat-badge" style="display: none;">0</span>
                 </div>
-                <div id="chatMessages" class="chat-messages"></div>
-                <div class="chat-input-container">
-                    <input type="text" id="chatInput" class="chat-input" placeholder="메시지를 입력하세요..." maxlength="200">
-                    <button id="sendChatBtn" class="send-chat-btn">전송</button>
+                <div id="chatPanel" class="chat-panel" style="display: none;">
+                    <div class="chat-header">
+                        <h3>채팅</h3>
+                        <button id="closeChatBtn" class="close-chat-btn">&times;</button>
+                    </div>
+                    <div id="chatMessages" class="chat-messages"></div>
+                    <div class="chat-input-container">
+                        <input type="text" id="chatInput" class="chat-input" placeholder="메시지를 입력하세요..." maxlength="200">
+                        <button id="sendChatBtn" class="send-chat-btn">전송</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -593,6 +707,7 @@
         let currentRoomId = null;
         let currentRole = null;
         let isFullscreen = false;
+        let unreadMessageCount = 0;
 
         // Toast 알림 함수들
         function showToast(message, type = 'info', duration = 4000) {
@@ -995,6 +1110,33 @@
         document.getElementById('chatInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 sendChatMessage();
+            }
+        });
+
+        // FAB 채팅 토글 기능
+        document.getElementById('chatFab').addEventListener('click', (e) => {
+            if (e.target.closest('.chat-panel') || e.target.id === 'closeChatBtn') return;
+
+            const chatPanel = document.getElementById('chatPanel');
+            const isVisible = chatPanel.style.display !== 'none';
+
+            if (isVisible) {
+                hideChatPanel();
+            } else {
+                showChatPanel();
+            }
+        });
+
+        // 채팅 패널 닫기 버튼
+        document.getElementById('closeChatBtn').addEventListener('click', hideChatPanel);
+
+        // 채팅 패널 외부 클릭 시 닫기
+        document.addEventListener('click', (e) => {
+            const chatFab = document.getElementById('chatFab');
+            const chatPanel = document.getElementById('chatPanel');
+
+            if (!chatFab.contains(e.target) && chatPanel.style.display !== 'none') {
+                hideChatPanel();
             }
         });
 
@@ -1482,8 +1624,51 @@
             }
         }
 
+        // FAB 채팅 패널 표시/숨김 함수
+        function showChatPanel() {
+            const chatPanel = document.getElementById('chatPanel');
+            chatPanel.style.display = 'flex';
+
+            // 패널이 열릴 때 입력창에 포커스
+            setTimeout(() => {
+                document.getElementById('chatInput').focus();
+            }, 100);
+
+            // 메시지 카운트 초기화
+            resetChatBadge();
+        }
+
+        function hideChatPanel() {
+            const chatPanel = document.getElementById('chatPanel');
+            chatPanel.style.display = 'none';
+        }
+
+        // 메시지 카운트 관리 함수들
+        function updateChatBadge() {
+            const chatBadge = document.getElementById('chatBadge');
+            const chatPanel = document.getElementById('chatPanel');
+
+            if (unreadMessageCount > 0 && chatPanel.style.display === 'none') {
+                chatBadge.textContent = unreadMessageCount > 99 ? '99+' : unreadMessageCount;
+                chatBadge.style.display = 'flex';
+            } else {
+                chatBadge.style.display = 'none';
+            }
+        }
+
+        function incrementChatBadge() {
+            unreadMessageCount++;
+            updateChatBadge();
+        }
+
+        function resetChatBadge() {
+            unreadMessageCount = 0;
+            updateChatBadge();
+        }
+
         function displayChatMessage(message) {
             const chatMessages = document.getElementById('chatMessages');
+            const chatPanel = document.getElementById('chatPanel');
 
             const messageElement = document.createElement('div');
             messageElement.className = `chat-message ${message.isHost ? 'own' : 'other'}`;
@@ -1503,6 +1688,17 @@
 
             // 스크롤을 최하단으로 이동
             chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // 전체화면일 때는 Toast 알림 표시
+            if (isFullscreen) {
+                showToast(`${message.sender}: ${message.content}`, 'info', 3000);
+                return;
+            }
+
+            // 채팅 패널이 닫혀있을 때만 카운트 증가
+            if (chatPanel.style.display === 'none') {
+                incrementChatBadge();
+            }
         }
     </script>
 </body>
