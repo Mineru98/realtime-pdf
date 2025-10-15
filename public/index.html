@@ -439,10 +439,30 @@
         // 전체화면 버튼 이벤트
         document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
 
-        // ESC 키로 전체화면 종료
+        // ESC 키로 전체화면 종료 및 방향키로 페이지 이동
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && isFullscreen) {
                 exitFullscreen();
+            }
+
+            // 방향키로 페이지 이동 (호스트 모드에서만)
+            if (isHost && window.pdfViewer) {
+                if (event.key === 'ArrowLeft') {
+                    // 왼쪽 화살표: 이전 페이지
+                    event.preventDefault();
+                    const currentPage = window.pdfViewer.getCurrentPage();
+                    if (currentPage > 1) {
+                        changePage(currentPage - 1);
+                    }
+                } else if (event.key === 'ArrowRight') {
+                    // 오른쪽 화살표: 다음 페이지
+                    event.preventDefault();
+                    const currentPage = window.pdfViewer.getCurrentPage();
+                    const totalPages = window.pdfViewer.getTotalPages();
+                    if (currentPage < totalPages) {
+                        changePage(currentPage + 1);
+                    }
+                }
             }
         });
 
