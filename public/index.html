@@ -183,20 +183,6 @@
             margin: 10px 0;
         }
 
-        .upload-btn {
-            background-color: #27ae60;
-            color: white;
-        }
-
-        .upload-btn:hover {
-            background-color: #229954;
-        }
-
-        .upload-btn:disabled {
-            background-color: #95a5a6;
-            cursor: not-allowed;
-        }
-
         #pdfCanvas {
             display: block;
             margin: 0 auto;
@@ -238,8 +224,6 @@
             <div class="drop-zone" id="dropZone">
                 <p>PDF 파일을 여기에 드래그하거나 클릭해서 선택하세요</p>
                 <input type="file" id="fileInput" accept=".pdf" class="file-input">
-                <br>
-                <button id="uploadBtn" class="upload-btn" disabled>업로드</button>
             </div>
         </div>
 
@@ -308,15 +292,39 @@
             document.getElementById('status').textContent = message;
         }
 
+        // 파일 업로드 함수
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('pdf', file);
+
+            updateStatus('PDF 업로드 중...');
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    updateStatus(`PDF 업로드 완료: ${result.pdf.originalName}`);
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (error) {
+                updateStatus(`업로드 실패: ${error.message}`);
+                throw error; // 에러를 다시 던져서 호출자가 처리할 수 있도록
+            }
+        }
+
         // 드래그 앤 드롭
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
-        const uploadBtn = document.getElementById('uploadBtn');
-        let isDragDrop = false; // 드래그 앤 드롭으로 파일이 설정되었는지 추적
 
         dropZone.addEventListener('click', (event) => {
-            // 업로드 버튼이나 파일 입력 자체가 클릭된 경우는 무시
-            if (event.target === uploadBtn || event.target === fileInput) return;
+            // 파일 입력 자체가 클릭된 경우는 무시
+            if (event.target === fileInput) return;
             fileInput.click();
         });
 
@@ -329,59 +337,27 @@
             dropZone.classList.remove('dragover');
         });
 
-        dropZone.addEventListener('drop', (e) => {
+        dropZone.addEventListener('drop', async (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
             const files = e.dataTransfer.files;
             if (files.length > 0 && files[0].type === 'application/pdf') {
-                isDragDrop = true;
-                // 드래그 앤 드롭 시에는 fileInput.files를 직접 설정하고 버튼 활성화
-                const dataTransfer = new DataTransfer();
-                dataTransfer.items.add(files[0]);
-                fileInput.files = dataTransfer.files;
-                uploadBtn.disabled = false;
-            }
-        });
-
-        fileInput.addEventListener('change', () => {
-            // 드래그 앤 드롭으로 파일이 이미 설정되었다면 change 이벤트 무시
-            if (isDragDrop) {
-                isDragDrop = false; // 플래그 리셋
-                return;
-            }
-            uploadBtn.disabled = !fileInput.files[0];
-        });
-
-        // 업로드
-        uploadBtn.addEventListener('click', async (event) => {
-            event.stopPropagation(); // 이벤트 전파 방지
-            const file = fileInput.files[0];
-            if (!file) return;
-
-            const formData = new FormData();
-            formData.append('pdf', file);
-
-            uploadBtn.disabled = true;
-            uploadBtn.textContent = '업로드 중...';
-
-            try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    updateStatus(`PDF 업로드 완료: ${result.pdf.originalName}`);
-                    uploadBtn.textContent = '업로드 완료';
-                } else {
-                    throw new Error(result.error);
+                try {
+                    await uploadFile(files[0]);
+                } catch (error) {
+                    // 에러는 uploadFile 함수 내에서 이미 처리됨
                 }
-            } catch (error) {
-                updateStatus(`업로드 실패: ${error.message}`);
-                uploadBtn.disabled = false;
-                uploadBtn.textContent = '업로드';
+            }
+        });
+
+        fileInput.addEventListener('change', async () => {
+            const file = fileInput.files[0];
+            if (file) {
+                try {
+                    await uploadFile(file);
+                } catch (error) {
+                    // 에러는 uploadFile 함수 내에서 이미 처리됨
+                }
             }
         });
 
