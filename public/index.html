@@ -328,6 +328,63 @@
             left: 50%;
             transform: translate(-50%, -50%);
         }
+
+        /* Toast 알림 스타일 */
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            max-width: 400px;
+        }
+
+        .toast {
+            background-color: #333;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: all 0.3s ease;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.success {
+            background-color: #28a745;
+        }
+
+        .toast.error {
+            background-color: #dc3545;
+        }
+
+        .toast.warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+
+        .toast.info {
+            background-color: #17a2b8;
+        }
+
+        .toast-close {
+            float: right;
+            margin-left: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            opacity: 0.7;
+        }
+
+        .toast-close:hover {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -356,7 +413,10 @@
             </div>
             <div id="joinedSection" class="room-section" style="display: none;">
                 <div>방: <span id="currentRoomId"></span> | 역할: <span id="currentRole"></span></div>
-                <button id="leaveRoomBtn" class="btn-viewer">방 나가기</button>
+                <div style="display: flex; gap: 10px; align-items: center; margin-top: 10px;">
+                    <button id="shareRoomBtn" class="btn-viewer" style="font-size: 14px; padding: 6px 12px;">방 링크 공유</button>
+                    <button id="leaveRoomBtn" class="btn-viewer">방 나가기</button>
+                </div>
             </div>
         </div>
 
@@ -394,6 +454,9 @@
 
     </div>
 
+    <!-- Toast 알림 컨테이너 -->
+    <div id="toastContainer" class="toast-container"></div>
+
     <!-- PDF.js 라이브러리 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
@@ -411,6 +474,53 @@
         let currentRole = null;
         let isFullscreen = false;
 
+        // Toast 알림 함수들
+        function showToast(message, type = 'info', duration = 4000) {
+            const toastContainer = document.getElementById('toastContainer');
+
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <span class="toast-close" onclick="this.parentElement.remove()">&times;</span>
+                ${message}
+            `;
+
+            toastContainer.appendChild(toast);
+
+            // 애니메이션 효과
+            setTimeout(() => toast.classList.add('show'), 10);
+
+            // 자동 제거
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    if (toast.parentElement) {
+                        toast.parentElement.removeChild(toast);
+                    }
+                }, 300);
+            }, duration);
+        }
+
+        // URL 쿼리스트링 파싱 함수
+        function getUrlParameters() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const room = urlParams.get('room');
+            const pw = urlParams.get('pw');
+
+            return {
+                room: room,
+                password: pw
+            };
+        }
+
+        // URL에서 방 정보 제거 (깔끔한 URL 유지)
+        function cleanUrl() {
+            const url = new URL(window.location);
+            url.searchParams.delete('room');
+            url.searchParams.delete('pw');
+            window.history.replaceState({}, document.title, url.pathname + url.hash);
+        }
+
         // 방 생성
         document.getElementById('createRoomBtn').addEventListener('click', () => {
             createRoom();
@@ -418,6 +528,10 @@
 
         document.getElementById('leaveRoomBtn').addEventListener('click', () => {
             leaveRoom();
+        });
+
+        document.getElementById('shareRoomBtn').addEventListener('click', () => {
+            shareRoomLink();
         });
 
         // 방 목록 새로고침
@@ -572,6 +686,74 @@
             }, 1000);
         }
 
+        function shareRoomLink() {
+            if (!currentRoomId) return;
+
+            // 방 정보 확인
+            fetch('/rooms')
+                .then(response => response.json())
+                .then(data => {
+                    const room = data.rooms.find(r => r.roomId === currentRoomId);
+                    if (!room) {
+                        showToast('방 정보를 찾을 수 없습니다.', 'error');
+                        return;
+                    }
+
+                    const baseUrl = window.location.origin + window.location.pathname;
+                    let shareUrl;
+
+                    if (room.privacy === 'private') {
+                        // 비공개 방인 경우 비밀번호 입력 요청
+                        const password = prompt('공유할 비밀번호를 입력하세요:');
+                        if (!password) {
+                            showToast('공유가 취소되었습니다.', 'warning');
+                            return;
+                        }
+                        shareUrl = `${baseUrl}?room=${currentRoomId}&pw=${encodeURIComponent(password)}`;
+                    } else {
+                        // 공개 방인 경우
+                        shareUrl = `${baseUrl}?room=${currentRoomId}`;
+                    }
+
+                    // 클립보드에 복사 시도
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(shareUrl).then(() => {
+                            showToast('방 링크가 클립보드에 복사되었습니다!', 'success');
+                        }).catch(() => {
+                            fallbackShare(shareUrl);
+                        });
+                    } else {
+                        fallbackShare(shareUrl);
+                    }
+                })
+                .catch(error => {
+                    console.error('방 정보 조회 실패:', error);
+                    showToast('방 정보를 확인할 수 없습니다.', 'error');
+                });
+        }
+
+        function fallbackShare(url) {
+            // 클립보드 API를 사용할 수 없는 경우 프롬프트로 표시
+            const textArea = document.createElement('textarea');
+            textArea.value = url;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                document.execCommand('copy');
+                showToast('방 링크가 클립보드에 복사되었습니다!', 'success');
+            } catch (error) {
+                // 복사 실패 시 URL을 alert으로 표시
+                alert(`방 링크를 복사해주세요:\n${url}`);
+            }
+
+            document.body.removeChild(textArea);
+        }
+
         function showRoomError(message) {
             const errorElement = document.getElementById('roomError');
             errorElement.textContent = message;
@@ -724,6 +906,9 @@
 
             updateStatus(`${currentRole}로 방 ${roomId}에 참여했습니다.`);
 
+            // 성공 toast 알림
+            showToast(`${currentRole}로 방 ${roomId}에 참여했습니다.`, 'success');
+
             // 방 목록 새로고침
             loadRoomList();
         });
@@ -732,6 +917,15 @@
             const { message } = event.detail;
             updateStatus(`오류: ${message}`);
             showRoomError(message);
+
+            // toast 알림 추가
+            if (message.includes('비밀번호가 일치하지 않습니다')) {
+                showToast('비밀번호가 틀렸습니다.', 'error');
+            } else if (message.includes('존재하지 않는 방입니다')) {
+                showToast('존재하지 않는 방입니다.', 'error');
+            } else {
+                showToast(message, 'error');
+            }
         });
 
         window.addEventListener('pdf_loaded', async (event) => {
@@ -875,10 +1069,80 @@
             }
         }
 
-        // 페이지 로드 시 방 목록 자동 로드
+        // 페이지 로드 시 방 목록 자동 로드 및 URL 파라미터 확인
         window.addEventListener('load', () => {
             loadRoomList();
+
+            // URL 쿼리스트링에서 방 정보 확인 및 자동 참여
+            setTimeout(() => {
+                const urlParams = getUrlParameters();
+                if (urlParams.room) {
+                    autoJoinRoom(urlParams.room, urlParams.password);
+                }
+            }, 1000); // 방 목록 로드 후 1초 대기
         });
+
+        // URL 파라미터를 통한 자동 방 참여
+        function autoJoinRoom(roomId, password) {
+            if (!roomId || !/^[a-zA-Z0-9]+$/.test(roomId)) {
+                showToast('잘못된 방 이름입니다.', 'error');
+                cleanUrl();
+                return;
+            }
+
+            updateStatus('URL에서 방 정보 확인 중...');
+
+            // 방 목록에서 해당 방 확인
+            fetch('/rooms')
+                .then(response => response.json())
+                .then(data => {
+                    const room = data.rooms.find(r => r.roomId === roomId);
+
+                    if (!room) {
+                        showToast('존재하지 않는 방입니다.', 'error');
+                        cleanUrl();
+                        updateStatus('존재하지 않는 방입니다.');
+                        return;
+                    }
+
+                    // 방 참여 시도
+                    updateStatus(`방 ${roomId}에 참여 중...`);
+
+                    if (room.privacy === 'private') {
+                        if (!password) {
+                            showToast('비공개 방입니다. 비밀번호가 필요합니다.', 'warning');
+                            cleanUrl();
+                            updateStatus('비밀번호가 필요합니다.');
+                            return;
+                        }
+
+                        // 비공개 방 참여
+                        if (window.wsClient) {
+                            window.wsClient.send({
+                                type: 'join_room',
+                                roomId: roomId,
+                                password: password
+                            });
+                        }
+                    } else {
+                        // 공개 방 참여
+                        if (window.wsClient) {
+                            window.wsClient.send({
+                                type: 'join_room',
+                                roomId: roomId
+                            });
+                        }
+                    }
+
+                    // URL에서 방 정보 제거
+                    cleanUrl();
+                })
+                .catch(error => {
+                    console.error('방 목록 조회 실패:', error);
+                    showToast('방 정보를 확인할 수 없습니다.', 'error');
+                    cleanUrl();
+                });
+        }
 
         function loadRoomList() {
             const container = document.getElementById('roomListContainer');
