@@ -1627,6 +1627,7 @@
         // FAB 채팅 패널 표시/숨김 함수
         function showChatPanel() {
             const chatPanel = document.getElementById('chatPanel');
+            const chatFab = document.getElementById('chatFab');
             chatPanel.style.display = 'flex';
 
             // 패널이 열릴 때 입력창에 포커스
@@ -1634,8 +1635,9 @@
                 document.getElementById('chatInput').focus();
             }, 100);
 
-            // 메시지 카운트 초기화
+            // 메시지 카운트 초기화 및 FAB 상태 업데이트
             resetChatBadge();
+            chatFab.classList.remove('has-messages');
         }
 
         function hideChatPanel() {
@@ -1647,12 +1649,23 @@
         function updateChatBadge() {
             const chatBadge = document.getElementById('chatBadge');
             const chatPanel = document.getElementById('chatPanel');
+            const chatFab = document.getElementById('chatFab');
 
-            if (unreadMessageCount > 0 && chatPanel.style.display === 'none') {
+            if (unreadMessageCount > 0 && (chatPanel.style.display === 'none' || isFullscreen)) {
                 chatBadge.textContent = unreadMessageCount > 99 ? '99+' : unreadMessageCount;
                 chatBadge.style.display = 'flex';
+
+                // 전체화면일 때 FAB 표시
+                if (isFullscreen) {
+                    chatFab.classList.add('has-messages');
+                }
             } else {
                 chatBadge.style.display = 'none';
+
+                // 전체화면일 때 FAB 숨김
+                if (isFullscreen) {
+                    chatFab.classList.remove('has-messages');
+                }
             }
         }
 
@@ -1669,6 +1682,7 @@
         function displayChatMessage(message) {
             const chatMessages = document.getElementById('chatMessages');
             const chatPanel = document.getElementById('chatPanel');
+            const chatFab = document.getElementById('chatFab');
 
             const messageElement = document.createElement('div');
             messageElement.className = `chat-message ${message.isHost ? 'own' : 'other'}`;
@@ -1689,15 +1703,19 @@
             // 스크롤을 최하단으로 이동
             chatMessages.scrollTop = chatMessages.scrollHeight;
 
-            // 전체화면일 때는 Toast 알림 표시
-            if (isFullscreen) {
-                showToast(`${message.sender}: ${message.content}`, 'info', 3000);
-                return;
-            }
-
             // 채팅 패널이 닫혀있을 때만 카운트 증가
             if (chatPanel.style.display === 'none') {
                 incrementChatBadge();
+
+                // 전체화면일 때 메시지가 도착하면 FAB 표시
+                if (isFullscreen && unreadMessageCount > 0) {
+                    chatFab.classList.add('has-messages');
+                }
+            }
+
+            // 전체화면일 때는 추가 알림 없이 FAB만 표시
+            if (isFullscreen) {
+                return;
             }
         }
     </script>
