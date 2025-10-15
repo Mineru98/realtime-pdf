@@ -147,7 +147,8 @@
             z-index: 1001;
         }
 
-        .viewer-section.fullscreen .page-controls {
+        .viewer-section.fullscreen .page-controls,
+        .viewer-section.fullscreen .fullscreen-btn {
             display: none;
         }
 
@@ -464,6 +465,7 @@
             const viewerSection = document.getElementById('viewerSection');
             const canvas = document.getElementById('pdfCanvas');
             const fullscreenBtn = document.getElementById('fullscreenBtn');
+            const pageControls = document.querySelector('.page-controls');
 
             // 브라우저 전체화면 API 사용
             if (viewerSection.requestFullscreen) {
@@ -478,8 +480,11 @@
             viewerSection.classList.add('fullscreen');
             canvas.classList.add('fullscreen');
 
-            // 버튼 텍스트 변경
-            fullscreenBtn.textContent = '전체화면 종료';
+            // 네비게이션 요소들 숨기기
+            fullscreenBtn.style.display = 'none';
+            if (pageControls) {
+                pageControls.style.display = 'none';
+            }
 
             isFullscreen = true;
 
@@ -496,6 +501,7 @@
             const viewerSection = document.getElementById('viewerSection');
             const canvas = document.getElementById('pdfCanvas');
             const fullscreenBtn = document.getElementById('fullscreenBtn');
+            const pageControls = document.querySelector('.page-controls');
 
             // 브라우저 전체화면 종료
             if (document.exitFullscreen) {
@@ -512,6 +518,12 @@
 
             // 버튼 텍스트 복원
             fullscreenBtn.textContent = '전체화면';
+
+            // 네비게이션 요소들 다시 보이기
+            fullscreenBtn.style.display = '';
+            if (pageControls) {
+                pageControls.style.display = '';
+            }
 
             isFullscreen = false;
 
