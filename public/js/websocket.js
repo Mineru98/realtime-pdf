@@ -93,6 +93,15 @@ class WebSocketClient {
         );
         break;
 
+      case "chat_message":
+        // 채팅 메시지 이벤트 발생
+        window.dispatchEvent(
+          new CustomEvent("chat_message", {
+            detail: message,
+          })
+        );
+        break;
+
       default:
     }
   }

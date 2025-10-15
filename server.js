@@ -358,6 +358,27 @@ function handleMessage(clientId, message) {
         });
       }
       break;
+
+    case "send_chat":
+      if (
+        !client.roomId ||
+        !message.content ||
+        message.content.trim().length === 0
+      ) {
+        return;
+      }
+
+      const chatMessage = {
+        type: "chat_message",
+        sender: client.isHost ? "호스트" : "참가자",
+        content: message.content.trim(),
+        timestamp: new Date().toISOString(),
+        isHost: client.isHost,
+      };
+
+      // 같은 방의 모든 클라이언트에게 채팅 메시지 브로드캐스트
+      broadcastToRoom(client.roomId, chatMessage);
+      break;
   }
 }
 
