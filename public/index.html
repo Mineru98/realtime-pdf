@@ -106,6 +106,7 @@
             height: 100vh;
             z-index: 1000;
             background-color: #000;
+            overflow: auto; /* 세로 스크롤 허용 */
         }
 
         .fullscreen-btn {
@@ -203,7 +204,6 @@
         }
 
         #pdfCanvas {
-            border: 1px solid #ccc;
             display: block;
             margin: 0 auto;
             max-width: 100%;
@@ -220,6 +220,13 @@
         .pdf-container {
             transform-origin: top left;
             overflow: auto;
+        }
+
+        .viewer-section.fullscreen #pdfCanvas {
+            position: absolute !important;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
         }
     </style>
 </head>

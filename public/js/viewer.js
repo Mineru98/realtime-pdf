@@ -72,44 +72,37 @@ class PDFViewer {
   setFullscreenMode(isFullscreen) {
     this.isFullscreen = isFullscreen;
     if (isFullscreen) {
-      this.adjustScaleForFullscreen();
+      this.adjustScaleForFullscreen().then(() => {
+        if (this.pdfDocument) {
+          this.renderPage(this.currentPageNum);
+        }
+      });
     } else {
       this.scale = 1.5; // 화질 향상을 위해 기본 스케일로 복원
-    }
-    if (this.pdfDocument) {
-      this.renderPage(this.currentPageNum);
+      if (this.pdfDocument) {
+        this.renderPage(this.currentPageNum);
+      }
     }
   }
 
-  adjustScaleForFullscreen() {
+  async adjustScaleForFullscreen() {
     if (!this.pdfDocument || this.currentPageNum < 1) return;
 
-    // 기본 화질 향상 스케일(1.5)을 유지하되, 화면이 너무 작으면 화면에 맞게 축소
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
 
-    // 페이지 컨트롤과 버튼을 위한 여백을 고려
-    const availableHeight = screenHeight - 80; // 페이지 컨트롤 높이와 여백
-    const availableWidth = screenWidth - 40; // 좌우 여백
+    // 페이지 컨트롤 높이 여백만 고려
+    const availableHeight = screenHeight - 80;
+    const availableWidth = screenWidth;
 
-    this.pdfDocument.getPage(this.currentPageNum).then((page) => {
-      const baseViewport = page.getViewport({ scale: 1.5 }); // 기본 화질 향상 스케일
+    const page = await this.pdfDocument.getPage(this.currentPageNum);
 
-      // 기본 스케일이 화면에 맞지 않으면 축소, 그렇지 않으면 1.5배 유지
-      const scaleX = availableWidth / baseViewport.width;
-      const scaleY = availableHeight / baseViewport.height;
+    // 원본 페이지 viewport (scale=1)로 가로 우선 fit scale 계산
+    const originalViewport = page.getViewport({ scale: 1.0 });
+    const fitScaleX = availableWidth / originalViewport.width;
 
-      if (
-        baseViewport.width <= availableWidth &&
-        baseViewport.height <= availableHeight
-      ) {
-        this.scale = 1.5; // 기본 화질 향상 스케일 유지
-      } else {
-        this.scale = Math.min(scaleX, scaleY) * 1.5; // 화면에 맞게 축소하되 화질 유지
-      }
-
-      this.renderPage(this.currentPageNum);
-    });
+    // 가로에 맞게 확대, 최소 1.0 (세로는 스크롤로 처리)
+    this.scale = Math.max(fitScaleX, 1.0);
   }
 
   updatePageInfo(current, total) {
