@@ -190,6 +190,17 @@ function handleMessage(clientId, message) {
         return;
       }
 
+      // 중복 방 이름 검증
+      if (rooms.has(message.roomId)) {
+        client.ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "이미 존재하는 방 이름입니다.",
+          })
+        );
+        return;
+      }
+
       // privacy 설정 검증
       const privacy = message.privacy || "public";
       if (!["public", "private"].includes(privacy)) {
