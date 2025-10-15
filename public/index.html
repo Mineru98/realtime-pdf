@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>실시간 PDF 뷰어</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            padding: 20px;
+            background-color: #2c3e50;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .role-selector {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        .btn-host {
+            background-color: #e74c3c;
+            color: white;
+        }
+
+        .btn-host:hover {
+            background-color: #c0392b;
+        }
+
+        .btn-host.active {
+            background-color: #27ae60;
+        }
+
+        .btn-viewer {
+            background-color: #3498db;
+            color: white;
+        }
+
+        .btn-viewer:hover {
+            background-color: #2980b9;
+        }
+
+        .btn-viewer.active {
+            background-color: #27ae60;
+        }
+
+        .upload-section {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: none;
+        }
+
+        .upload-section.show {
+            display: block;
+        }
+
+        .pdf-viewer {
+            height: 70vh;
+            border: none;
+            width: 100%;
+            max-width: none;
+            max-height: none;
+            transition: height 0.3s ease;
+        }
+
+        .pdf-viewer.fullscreen {
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1000;
+            background-color: #000;
+        }
+
+        .viewer-section.fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1000;
+            background-color: #000;
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 1001;
+            font-size: 16px;
+        }
+
+        .fullscreen-btn:hover {
+            background-color: rgba(0, 0, 0, 0.9);
+        }
+
+        .status {
+            padding: 10px 20px;
+            background-color: #ecf0f1;
+            border-top: 1px solid #bdc3c7;
+            font-size: 14px;
+            color: #34495e;
+        }
+
+        .page-controls {
+            padding: 10px 20px;
+            background-color: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+            z-index: 1001;
+        }
+
+        .viewer-section.fullscreen .page-controls {
+            background-color: rgba(0, 0, 0, 0.8);
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            width: 100%;
+            z-index: 1001;
+        }
+
+        .viewer-section.fullscreen .page-info {
+            color: white;
+        }
+
+        .page-info {
+            font-weight: bold;
+            color: #495057;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .drop-zone {
+            border: 2px dashed #bdc3c7;
+            border-radius: 5px;
+            padding: 40px;
+            text-align: center;
+            background-color: #f8f9fa;
+            transition: border-color 0.3s;
+        }
+
+        .drop-zone.dragover {
+            border-color: #3498db;
+            background-color: #ecf0f1;
+        }
+
+        .file-input {
+            margin: 10px 0;
+        }
+
+        .upload-btn {
+            background-color: #27ae60;
+            color: white;
+        }
+
+        .upload-btn:hover {
+            background-color: #229954;
+        }
+
+        .upload-btn:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        #pdfCanvas {
+            border: 1px solid #ccc;
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+            /* 화질 개선을 위한 CSS */
+            image-rendering: crisp-edges;
+            image-rendering: -webkit-optimize-contrast;
+            -ms-interpolation-mode: nearest-neighbor;
+            image-rendering: pixelated; /* 고화질 유지 */
+            /* Canvas 확대 시 선명도 유지 */
+            transform: scale(1); /* 기본 스케일 고정 */
+        }
+
+        /* 전체 컨테이너 스케일링 방지 */
+        .pdf-container {
+            transform-origin: top left;
+            overflow: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>실시간 PDF 뷰어</h1>
+            <div class="role-selector">
+                <button id="hostBtn" class="btn-host">호스트로 참여</button>
+                <button id="viewerBtn" class="btn-viewer">참가자로 참여</button>
+            </div>
+        </div>
+
+        <div id="uploadSection" class="upload-section">
+            <div class="drop-zone" id="dropZone">
+                <p>PDF 파일을 여기에 드래그하거나 클릭해서 선택하세요</p>
+                <input type="file" id="fileInput" accept=".pdf" class="file-input">
+                <br>
+                <button id="uploadBtn" class="upload-btn" disabled>업로드</button>
+            </div>
+        </div>
+
+        <div id="viewerSection" class="hidden">
+            <canvas id="pdfCanvas" class="pdf-viewer"></canvas>
+            <button id="fullscreenBtn" class="fullscreen-btn">전체화면</button>
+            <div class="page-controls">
+                <button id="prevBtn">이전</button>
+                <span id="pageInfo" class="page-info">페이지 로딩 중...</span>
+                <button id="nextBtn">다음</button>
+            </div>
+        </div>
+
+        <div id="status" class="status">
+            역할을 선택해주세요.
+        </div>
+    </div>
+
+    <!-- PDF.js 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <!-- WebSocket 클라이언트 -->
+    <script src="js/websocket.js"></script>
+
+    <!-- PDF 뷰어 -->
+    <script src="js/viewer.js"></script>
+
+    <script>
+        // PDF.js 워커 설정
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        let currentRole = null;
+        let isHost = false;
+        let isFullscreen = false;
+
+        // 역할 선택
+        document.getElementById('hostBtn').addEventListener('click', () => {
+            setRole('host');
+        });
+
+        document.getElementById('viewerBtn').addEventListener('click', () => {
+            setRole('viewer');
+        });
+
+        function setRole(role) {
+            currentRole = role;
+            isHost = role === 'host';
+
+            document.getElementById('hostBtn').classList.toggle('active', isHost);
+            document.getElementById('viewerBtn').classList.toggle('active', !isHost);
+
+            document.getElementById('uploadSection').classList.toggle('show', isHost);
+            document.getElementById('viewerSection').classList.toggle('hidden', false);
+
+            updateStatus(`${role === 'host' ? '호스트' : '참가자'}로 참여 중`);
+
+            // WebSocket에 역할 알림
+            if (window.wsClient) {
+                window.wsClient.send({
+                    type: role === 'host' ? 'join_as_host' : 'join_as_viewer'
+                });
+            }
+        }
+
+        function updateStatus(message) {
+            document.getElementById('status').textContent = message;
+        }
+
+        // 드래그 앤 드롭
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        let isDragDrop = false; // 드래그 앤 드롭으로 파일이 설정되었는지 추적
+
+        dropZone.addEventListener('click', (event) => {
+            // 업로드 버튼이나 파일 입력 자체가 클릭된 경우는 무시
+            if (event.target === uploadBtn || event.target === fileInput) return;
+            fileInput.click();
+        });
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type === 'application/pdf') {
+                isDragDrop = true;
+                // 드래그 앤 드롭 시에는 fileInput.files를 직접 설정하고 버튼 활성화
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(files[0]);
+                fileInput.files = dataTransfer.files;
+                uploadBtn.disabled = false;
+            }
+        });
+
+        fileInput.addEventListener('change', () => {
+            // 드래그 앤 드롭으로 파일이 이미 설정되었다면 change 이벤트 무시
+            if (isDragDrop) {
+                isDragDrop = false; // 플래그 리셋
+                return;
+            }
+            uploadBtn.disabled = !fileInput.files[0];
+        });
+
+        // 업로드
+        uploadBtn.addEventListener('click', async (event) => {
+            event.stopPropagation(); // 이벤트 전파 방지
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('pdf', file);
+
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = '업로드 중...';
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    updateStatus(`PDF 업로드 완료: ${result.pdf.originalName}`);
+                    uploadBtn.textContent = '업로드 완료';
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (error) {
+                updateStatus(`업로드 실패: ${error.message}`);
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = '업로드';
+            }
+        });
+
+        // 페이지 컨트롤
+        document.getElementById('prevBtn').addEventListener('click', () => {
+            if (isHost && window.pdfViewer) {
+                const currentPage = window.pdfViewer.getCurrentPage();
+                if (currentPage > 1) {
+                    changePage(currentPage - 1);
+                }
+            }
+        });
+
+        document.getElementById('nextBtn').addEventListener('click', () => {
+            if (isHost && window.pdfViewer) {
+                const currentPage = window.pdfViewer.getCurrentPage();
+                const totalPages = window.pdfViewer.getTotalPages();
+                if (currentPage < totalPages) {
+                    changePage(currentPage + 1);
+                }
+            }
+        });
+
+        function changePage(pageNum) {
+            if (isHost && window.pdfViewer) {
+                const result = window.pdfViewer.goToPage(pageNum);
+                if (result !== null) {
+                    // WebSocket으로 페이지 변경 알림 (호스트 자신은 제외하고 뷰어들에게만 전송)
+                    if (window.wsClient) {
+                        window.wsClient.send({
+                            type: 'page_change',
+                            page: pageNum
+                        });
+                    }
+                }
+            }
+        }
+
+        // WebSocket 이벤트 핸들러들
+        window.addEventListener('pdf_loaded', async (event) => {
+            try {
+                await window.pdfViewer.loadPDF(`/uploads/${event.detail.pdf.filename}`);
+                updateStatus('PDF 로드 완료');
+            } catch (error) {
+                updateStatus(`PDF 로드 실패: ${error.message}`);
+            }
+        });
+
+        window.addEventListener('page_change', (event) => {
+            if (!isHost && window.pdfViewer) {
+                window.pdfViewer.goToPage(event.detail.page);
+            }
+        });
+
+        // 전체화면 버튼 이벤트
+        document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
+
+        // ESC 키로 전체화면 종료
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && isFullscreen) {
+                exitFullscreen();
+            }
+        });
+
+        // 브라우저 전체화면 변경 감지
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                exitFullscreen();
+            }
+        });
+
+        function toggleFullscreen() {
+            if (!isFullscreen) {
+                enterFullscreen();
+            } else {
+                exitFullscreen();
+            }
+        }
+
+        function enterFullscreen() {
+            const viewerSection = document.getElementById('viewerSection');
+            const canvas = document.getElementById('pdfCanvas');
+            const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+            // 브라우저 전체화면 API 사용
+            if (viewerSection.requestFullscreen) {
+                viewerSection.requestFullscreen();
+            } else if (viewerSection.webkitRequestFullscreen) {
+                viewerSection.webkitRequestFullscreen();
+            } else if (viewerSection.msRequestFullscreen) {
+                viewerSection.msRequestFullscreen();
+            }
+
+            // CSS 클래스로 시각적 전체화면 효과 적용
+            viewerSection.classList.add('fullscreen');
+            canvas.classList.add('fullscreen');
+
+            // 버튼 텍스트 변경
+            fullscreenBtn.textContent = '전체화면 종료';
+
+            isFullscreen = true;
+
+            // PDF 뷰어에 전체화면 모드 알림
+            if (window.pdfViewer) {
+                window.pdfViewer.setFullscreenMode(true);
+            }
+
+            // 창 크기 변경 시 스케일 재조정
+            window.addEventListener('resize', handleResize);
+        }
+
+        function exitFullscreen() {
+            const viewerSection = document.getElementById('viewerSection');
+            const canvas = document.getElementById('pdfCanvas');
+            const fullscreenBtn = document.getElementById('fullscreenBtn');
+
+            // 브라우저 전체화면 종료
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen();
+            }
+
+            // CSS 클래스 제거
+            viewerSection.classList.remove('fullscreen');
+            canvas.classList.remove('fullscreen');
+
+            // 버튼 텍스트 복원
+            fullscreenBtn.textContent = '전체화면';
+
+            isFullscreen = false;
+
+            // PDF 뷰어에 전체화면 모드 종료 알림
+            if (window.pdfViewer) {
+                window.pdfViewer.setFullscreenMode(false);
+            }
+
+            // 창 크기 변경 이벤트 리스너 제거
+            window.removeEventListener('resize', handleResize);
+        }
+
+        function handleResize() {
+            if (isFullscreen && window.pdfViewer) {
+                window.pdfViewer.adjustScaleForFullscreen();
+            }
+        }
+    </script>
+</body>
+</html>
