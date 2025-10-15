@@ -22,7 +22,6 @@ class WebSocketClient {
 
   setupEventHandlers() {
     this.ws.onopen = (event) => {
-      console.log("WebSocket 연결됨");
       this.isConnected = true;
       this.reconnectAttempts = 0;
 
@@ -40,7 +39,6 @@ class WebSocketClient {
     };
 
     this.ws.onclose = (event) => {
-      console.log("WebSocket 연결 종료:", event.code, event.reason);
       this.isConnected = false;
       this.updateConnectionStatus("연결 끊어짐");
 
@@ -58,8 +56,6 @@ class WebSocketClient {
   }
 
   handleMessage(message) {
-    console.log("받은 메시지:", message);
-
     switch (message.type) {
       case "room_joined":
         // 방 참여 성공 이벤트 발생
@@ -98,7 +94,6 @@ class WebSocketClient {
         break;
 
       default:
-        console.log("알 수 없는 메시지 타입:", message.type);
     }
   }
 
@@ -118,9 +113,6 @@ class WebSocketClient {
       );
 
       setTimeout(() => {
-        console.log(
-          `재연결 시도 ${this.reconnectAttempts}/${this.maxReconnectAttempts}`
-        );
         this.connect();
       }, this.reconnectInterval);
     } else {

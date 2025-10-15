@@ -25,7 +25,6 @@ function createRoom(roomId, privacy = "public", password = null) {
       password: password, // 비밀번호 (private 방인 경우)
       createdAt: new Date(),
     });
-    console.log(`방 생성됨: ${roomId} (${privacy})`);
   }
   return rooms.get(roomId);
 }
@@ -36,7 +35,6 @@ function deleteRoom(roomId) {
     const room = rooms.get(roomId);
     if (room.clients.size === 0) {
       rooms.delete(roomId);
-      console.log(`방 삭제됨: ${roomId}`);
     }
   }
 }
@@ -123,8 +121,6 @@ wss.on("connection", (ws) => {
   const client = { ws, isHost: false, roomId: null };
   clients.set(clientId, client);
 
-  console.log(`새 클라이언트 연결: ${clientId}`);
-
   ws.on("message", (data) => {
     try {
       const message = JSON.parse(data.toString());
@@ -135,8 +131,6 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
-    console.log(`클라이언트 연결 종료: ${clientId}`);
-
     // 방에서 클라이언트 제거
     const client = clients.get(clientId);
     if (client && client.roomId) {
@@ -233,10 +227,6 @@ function handleMessage(clientId, message) {
       client.isHost = true;
       room.clients.add(clientId);
 
-      console.log(
-        `방 생성 및 호스트 참여: ${message.roomId} (${privacy}) (클라이언트: ${clientId})`
-      );
-
       // 방 생성 성공 응답
       client.ws.send(
         JSON.stringify({
@@ -304,8 +294,6 @@ function handleMessage(clientId, message) {
       client.isHost = false;
       joinRoom.clients.add(clientId);
 
-      console.log(`방 참여: ${message.roomId} (클라이언트: ${clientId})`);
-
       // 방 참여 성공 응답
       client.ws.send(
         JSON.stringify({
@@ -362,9 +350,6 @@ function handleMessage(clientId, message) {
       const roomForPageChange = rooms.get(client.roomId);
       if (roomForPageChange && roomForPageChange.pdf) {
         roomForPageChange.page = message.page;
-        console.log(
-          `페이지 변경: ${message.page} (방: ${client.roomId}, 호스트: ${clientId})`
-        );
 
         // 같은 방의 뷰어들에게만 페이지 변경 알림
         broadcastToRoomViewers(client.roomId, {
@@ -405,7 +390,4 @@ function broadcastToRoomViewers(roomId, message) {
 }
 
 const PORT = process.env.PORT || 9999;
-server.listen(PORT, () => {
-  console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
-  console.log(`http://localhost:${PORT} 에서 접속하세요.`);
-});
+server.listen(PORT, () => {});
