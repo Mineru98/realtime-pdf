@@ -129,7 +129,7 @@ class PDFViewer {
     return null;
   }
 
-  goToPage(pageNum) {
+  async goToPage(pageNum) {
     if (
       this.pdfDocument &&
       pageNum >= 1 &&
@@ -137,7 +137,8 @@ class PDFViewer {
     ) {
       this.currentPageNum = pageNum;
       if (this.isFullscreen) {
-        this.adjustScaleForFullscreen();
+        await this.adjustScaleForFullscreen();
+        this.renderPage(pageNum);
       } else {
         this.renderPage(pageNum);
       }
