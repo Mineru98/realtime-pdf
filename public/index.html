@@ -309,6 +309,8 @@
 
                 if (result.success) {
                     updateStatus(`PDF 업로드 완료: ${result.pdf.originalName}`);
+                    // 업로드 완료 후 업로드 섹션 숨기기
+                    document.getElementById('uploadSection').classList.remove('show');
                 } else {
                     throw new Error(result.error);
                 }
