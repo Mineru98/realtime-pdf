@@ -3,7 +3,7 @@ class WebSocketClient {
     this.ws = null;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
-    this.reconnectInterval = 3000;
+    this.reconnectInterval = 9999;
     this.isConnected = false;
   }
 

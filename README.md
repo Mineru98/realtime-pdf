@@ -11,6 +11,8 @@ PDF.js와 WebSocket을 사용하여 실시간으로 PDF를 공유할 수 있는 
 
 ## 설치 및 실행
 
+### 로컬 개발 환경
+
 1. 의존성 설치:
 ```bash
 npm install
@@ -23,7 +25,53 @@ npm start
 
 3. 브라우저에서 접속:
 ```
-http://localhost:3000
+http://localhost:9999
+```
+
+### Docker를 사용한 배포
+
+Docker와 Docker Compose를 사용하여 쉽게 배포할 수 있습니다.
+
+1. **Docker Compose로 빌드 및 실행:**
+```bash
+docker-compose up -d
+```
+
+2. **특정 버전 빌드:**
+```bash
+docker-compose up --build -d
+```
+
+3. **로그 확인:**
+```bash
+docker-compose logs -f app
+```
+
+4. **중지 및 제거:**
+```bash
+docker-compose down
+```
+
+5. **볼륨 데이터 유지하면서 재시작:**
+```bash
+docker-compose down
+docker-compose up -d
+```
+
+### Docker 명령어 (수동)
+
+Docker Compose 대신 직접 Docker 명령어를 사용할 수도 있습니다:
+
+```bash
+# 이미지 빌드
+docker build -t realtime-pdf-viewer .
+
+# 컨테이너 실행 (uploads 볼륨 마운트)
+docker run -d \
+  --name realtime-pdf-viewer \
+  -p 9999:9999 \
+  -v $(pwd)/uploads:/app/uploads \
+  realtime-pdf-viewer
 ```
 
 ## 사용법
@@ -52,12 +100,15 @@ http://localhost:3000
 ```
 ├── server.js          # 메인 서버 파일
 ├── package.json       # 의존성 설정
+├── Dockerfile         # Docker 이미지 빌드 설정
+├── docker-compose.yml # Docker Compose 설정
+├── .dockerignore      # Docker 빌드 제외 파일 목록
 ├── public/
 │   ├── index.html     # 메인 HTML 페이지
 │   ├── js/
 │   │   ├── viewer.js      # PDF 뷰어 클래스
 │   │   └── websocket.js   # WebSocket 클라이언트
-│   └── uploads/       # 업로드된 PDF 파일들
+├── uploads/           # 업로드된 PDF 파일들 (Docker 볼륨 마운트)
 └── README.md          # 이 파일
 ```
 
