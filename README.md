@@ -2,6 +2,12 @@
 
 PDF.js와 WebSocket을 사용하여 실시간으로 PDF를 공유할 수 있는 웹 애플리케이션입니다.
 
+## Demo
+
+https://github.com/user-attachments/assets/03670358-7d36-493e-af82-b8f14db7cf77
+
+
+
 ## 기능
 
 - **호스트 모드**: PDF 파일을 업로드하고 페이지를 제어
