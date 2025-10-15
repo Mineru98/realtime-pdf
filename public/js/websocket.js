@@ -61,6 +61,24 @@ class WebSocketClient {
     console.log("받은 메시지:", message);
 
     switch (message.type) {
+      case "room_joined":
+        // 방 참여 성공 이벤트 발생
+        window.dispatchEvent(
+          new CustomEvent("room_joined", {
+            detail: message,
+          })
+        );
+        break;
+
+      case "error":
+        // 에러 이벤트 발생
+        window.dispatchEvent(
+          new CustomEvent("room_error", {
+            detail: message,
+          })
+        );
+        break;
+
       case "pdf_loaded":
         // PDF 로드 이벤트 발생
         window.dispatchEvent(

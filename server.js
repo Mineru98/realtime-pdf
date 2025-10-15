@@ -10,10 +10,33 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// 현재 로드된 PDF 정보
-let currentPdf = null;
-let currentPage = 1;
+// 방별 상태 관리
+let rooms = new Map(); // roomId -> { pdf: currentPdf, page: currentPage, clients: Set<clientId> }
 let clients = new Map(); // clientId -> { ws, isHost, roomId }
+
+// 방 생성 함수
+function createRoom(roomId) {
+  if (!rooms.has(roomId)) {
+    rooms.set(roomId, {
+      pdf: null,
+      page: 1,
+      clients: new Set(),
+    });
+    console.log(`방 생성됨: ${roomId}`);
+  }
+  return rooms.get(roomId);
+}
+
+// 방 삭제 함수
+function deleteRoom(roomId) {
+  if (rooms.has(roomId)) {
+    const room = rooms.get(roomId);
+    if (room.clients.size === 0) {
+      rooms.delete(roomId);
+      console.log(`방 삭제됨: ${roomId}`);
+    }
+  }
+}
 
 // 업로드 디렉토리 생성
 const uploadDir = path.join(__dirname, "uploads");
@@ -53,29 +76,18 @@ app.post("/upload", upload.single("pdf"), (req, res) => {
     return res.status(400).json({ error: "PDF 파일이 필요합니다." });
   }
 
-  currentPdf = {
+  const pdfInfo = {
     filename: req.file.filename,
     originalName: req.file.originalname,
     path: req.file.path,
     uploadedAt: new Date(),
   };
-  currentPage = 1;
-
-  // 모든 클라이언트에게 새 PDF 알림
-  broadcastToAll({
-    type: "pdf_loaded",
-    pdf: {
-      filename: currentPdf.filename,
-      originalName: currentPdf.originalName,
-    },
-    page: currentPage,
-  });
 
   res.json({
     success: true,
     pdf: {
-      filename: currentPdf.filename,
-      originalName: currentPdf.originalName,
+      filename: pdfInfo.filename,
+      originalName: pdfInfo.originalName,
     },
   });
 });
@@ -96,24 +108,10 @@ app.get("/current-pdf", (req, res) => {
 // WebSocket 연결 처리
 wss.on("connection", (ws) => {
   const clientId = uuidv4();
-  const client = { ws, isHost: false, roomId: "default" };
+  const client = { ws, isHost: false, roomId: null };
   clients.set(clientId, client);
 
   console.log(`새 클라이언트 연결: ${clientId}`);
-
-  // 클라이언트에게 현재 상태 전송
-  if (currentPdf) {
-    ws.send(
-      JSON.stringify({
-        type: "pdf_loaded",
-        pdf: {
-          filename: currentPdf.filename,
-          originalName: currentPdf.originalName,
-        },
-        page: currentPage,
-      })
-    );
-  }
 
   ws.on("message", (data) => {
     try {
@@ -126,11 +124,39 @@ wss.on("connection", (ws) => {
 
   ws.on("close", () => {
     console.log(`클라이언트 연결 종료: ${clientId}`);
+
+    // 방에서 클라이언트 제거
+    const client = clients.get(clientId);
+    if (client && client.roomId) {
+      const room = rooms.get(client.roomId);
+      if (room) {
+        room.clients.delete(clientId);
+        // 방에 클라이언트가 없으면 방 삭제
+        if (room.clients.size === 0) {
+          deleteRoom(client.roomId);
+        }
+      }
+    }
+
     clients.delete(clientId);
   });
 
   ws.on("error", (error) => {
     console.error(`클라이언트 오류 ${clientId}:`, error);
+
+    // 방에서 클라이언트 제거
+    const client = clients.get(clientId);
+    if (client && client.roomId) {
+      const room = rooms.get(client.roomId);
+      if (room) {
+        room.clients.delete(clientId);
+        // 방에 클라이언트가 없으면 방 삭제
+        if (room.clients.size === 0) {
+          deleteRoom(client.roomId);
+        }
+      }
+    }
+
     clients.delete(clientId);
   });
 });
@@ -141,61 +167,170 @@ function handleMessage(clientId, message) {
   if (!client) return;
 
   switch (message.type) {
-    case "join_as_host":
-      client.isHost = true;
-      console.log(`호스트로 참여: ${clientId}`);
-      break;
-
-    case "join_as_viewer":
-      client.isHost = false;
-      console.log(`뷰어로 참여: ${clientId}`);
-      break;
-
-    case "page_change":
-      if (client.isHost && currentPdf) {
-        currentPage = message.page;
-        console.log(`페이지 변경: ${currentPage} (호스트: ${clientId})`);
-
-        // 모든 클라이언트에게 페이지 변경 알림 (호스트 제외)
-        broadcastToViewers({
-          type: "page_change",
-          page: currentPage,
-        });
+    case "create_room":
+      if (!message.roomId || !/^[a-zA-Z0-9]+$/.test(message.roomId)) {
+        client.ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "방 이름은 영어와 숫자로만 구성되어야 합니다.",
+          })
+        );
+        return;
       }
-      break;
 
-    case "get_current_state":
-      if (currentPdf) {
+      const room = createRoom(message.roomId);
+      client.roomId = message.roomId;
+      client.isHost = true;
+      room.clients.add(clientId);
+
+      console.log(
+        `방 생성 및 호스트 참여: ${message.roomId} (클라이언트: ${clientId})`
+      );
+
+      // 방 생성 성공 응답
+      client.ws.send(
+        JSON.stringify({
+          type: "room_joined",
+          roomId: message.roomId,
+          isHost: true,
+        })
+      );
+
+      // 현재 방 상태 전송
+      if (room.pdf) {
         client.ws.send(
           JSON.stringify({
             type: "pdf_loaded",
             pdf: {
-              filename: currentPdf.filename,
-              originalName: currentPdf.originalName,
+              filename: room.pdf.filename,
+              originalName: room.pdf.originalName,
             },
-            page: currentPage,
+            page: room.page,
           })
         );
+      }
+      break;
+
+    case "join_room":
+      if (!message.roomId || !/^[a-zA-Z0-9]+$/.test(message.roomId)) {
+        client.ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "방 이름은 영어와 숫자로만 구성되어야 합니다.",
+          })
+        );
+        return;
+      }
+
+      const joinRoom = rooms.get(message.roomId);
+      if (!joinRoom) {
+        client.ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "존재하지 않는 방입니다.",
+          })
+        );
+        return;
+      }
+
+      client.roomId = message.roomId;
+      client.isHost = false;
+      joinRoom.clients.add(clientId);
+
+      console.log(`방 참여: ${message.roomId} (클라이언트: ${clientId})`);
+
+      // 방 참여 성공 응답
+      client.ws.send(
+        JSON.stringify({
+          type: "room_joined",
+          roomId: message.roomId,
+          isHost: false,
+        })
+      );
+
+      // 현재 방 상태 전송
+      if (joinRoom.pdf) {
+        client.ws.send(
+          JSON.stringify({
+            type: "pdf_loaded",
+            pdf: {
+              filename: joinRoom.pdf.filename,
+              originalName: joinRoom.pdf.originalName,
+            },
+            page: joinRoom.page,
+          })
+        );
+      }
+      break;
+
+    case "upload_pdf":
+      if (!client.roomId || !client.isHost) {
+        client.ws.send(
+          JSON.stringify({
+            type: "error",
+            message: "호스트만 PDF를 업로드할 수 있습니다.",
+          })
+        );
+        return;
+      }
+
+      const roomForUpload = rooms.get(client.roomId);
+      if (roomForUpload) {
+        roomForUpload.pdf = message.pdf;
+        roomForUpload.page = 1;
+
+        // 같은 방의 모든 클라이언트에게 PDF 로드 알림
+        broadcastToRoom(client.roomId, {
+          type: "pdf_loaded",
+          pdf: message.pdf,
+          page: 1,
+        });
+      }
+      break;
+
+    case "page_change":
+      if (!client.roomId || !client.isHost) return;
+
+      const roomForPageChange = rooms.get(client.roomId);
+      if (roomForPageChange && roomForPageChange.pdf) {
+        roomForPageChange.page = message.page;
+        console.log(
+          `페이지 변경: ${message.page} (방: ${client.roomId}, 호스트: ${clientId})`
+        );
+
+        // 같은 방의 뷰어들에게만 페이지 변경 알림
+        broadcastToRoomViewers(client.roomId, {
+          type: "page_change",
+          page: message.page,
+        });
       }
       break;
   }
 }
 
-// 모든 클라이언트에게 브로드캐스트
-function broadcastToAll(message) {
+// 방의 모든 클라이언트에게 브로드캐스트
+function broadcastToRoom(roomId, message) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+
   const messageStr = JSON.stringify(message);
-  clients.forEach((client) => {
-    if (client.ws.readyState === WebSocket.OPEN) {
+  room.clients.forEach((clientId) => {
+    const client = clients.get(clientId);
+    if (client && client.ws.readyState === WebSocket.OPEN) {
       client.ws.send(messageStr);
     }
   });
 }
 
-// 뷰어들에게만 브로드캐스트
-function broadcastToViewers(message) {
+// 방의 뷰어들에게만 브로드캐스트
+function broadcastToRoomViewers(roomId, message) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+
   const messageStr = JSON.stringify(message);
-  clients.forEach((client) => {
-    if (!client.isHost && client.ws.readyState === WebSocket.OPEN) {
+  room.clients.forEach((clientId) => {
+    const client = clients.get(clientId);
+    if (client && !client.isHost && client.ws.readyState === WebSocket.OPEN) {
       client.ws.send(messageStr);
     }
   });

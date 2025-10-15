@@ -30,6 +30,31 @@
             align-items: center;
         }
 
+        .room-section {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: flex-start;
+        }
+
+        .room-input-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .room-input {
+            padding: 8px 12px;
+            border: 1px solid #bdc3c7;
+            border-radius: 4px;
+            font-size: 14px;
+            width: 150px;
+        }
+
+        .room-input.error {
+            border-color: #e74c3c;
+        }
+
         .role-selector {
             display: flex;
             gap: 10px;
@@ -214,9 +239,18 @@
     <div class="container">
         <div class="header">
             <h1>실시간 PDF 뷰어</h1>
-            <div class="role-selector">
-                <button id="hostBtn" class="btn-host">호스트로 참여</button>
-                <button id="viewerBtn" class="btn-viewer">참가자로 참여</button>
+            <div id="initialSection" class="room-section">
+                <div class="room-input-group">
+                    <label for="roomInput">방 이름:</label>
+                    <input type="text" id="roomInput" class="room-input" placeholder="영어/숫자만 입력" maxlength="20">
+                    <button id="createRoomBtn" class="btn-host">방 생성</button>
+                    <button id="joinRoomBtn" class="btn-viewer">방 참여</button>
+                </div>
+                <div id="roomError" class="error-message" style="color: #e74c3c; font-size: 12px; display: none;"></div>
+            </div>
+            <div id="joinedSection" class="room-section" style="display: none;">
+                <div>방: <span id="currentRoomId"></span> | 역할: <span id="currentRole"></span></div>
+                <button id="leaveRoomBtn" class="btn-viewer">방 나가기</button>
             </div>
         </div>
 
@@ -255,37 +289,111 @@
         // PDF.js 워커 설정
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+        let currentRoomId = null;
         let currentRole = null;
-        let isHost = false;
         let isFullscreen = false;
 
-        // 역할 선택
-        document.getElementById('hostBtn').addEventListener('click', () => {
-            setRole('host');
+        // 방 생성/참여
+        document.getElementById('createRoomBtn').addEventListener('click', () => {
+            createRoom();
         });
 
-        document.getElementById('viewerBtn').addEventListener('click', () => {
-            setRole('viewer');
+        document.getElementById('joinRoomBtn').addEventListener('click', () => {
+            joinRoom();
         });
 
-        function setRole(role) {
-            currentRole = role;
-            isHost = role === 'host';
+        document.getElementById('leaveRoomBtn').addEventListener('click', () => {
+            leaveRoom();
+        });
 
-            document.getElementById('hostBtn').classList.toggle('active', isHost);
-            document.getElementById('viewerBtn').classList.toggle('active', !isHost);
+        // 방 이름 입력 검증
+        document.getElementById('roomInput').addEventListener('input', (e) => {
+            const value = e.target.value;
+            const isValid = /^[a-zA-Z0-9]*$/.test(value);
 
-            document.getElementById('uploadSection').classList.toggle('show', isHost);
-            document.getElementById('viewerSection').classList.toggle('hidden', false);
+            e.target.classList.toggle('error', !isValid);
+            document.getElementById('roomError').style.display = isValid ? 'none' : 'block';
+            document.getElementById('roomError').textContent = isValid ? '' : '영어와 숫자만 입력 가능합니다.';
+        });
 
-            updateStatus(`${role === 'host' ? '호스트' : '참가자'}로 참여 중`);
+        // Enter 키로 방 참여
+        document.getElementById('roomInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                joinRoom();
+            }
+        });
 
-            // WebSocket에 역할 알림
+        function createRoom() {
+            const roomId = document.getElementById('roomInput').value.trim();
+            if (!roomId) {
+                showRoomError('방 이름을 입력해주세요.');
+                return;
+            }
+
+            if (!/^[a-zA-Z0-9]+$/.test(roomId)) {
+                showRoomError('방 이름은 영어와 숫자로만 구성되어야 합니다.');
+                return;
+            }
+
+            updateStatus('방 생성 중...');
+
             if (window.wsClient) {
                 window.wsClient.send({
-                    type: role === 'host' ? 'join_as_host' : 'join_as_viewer'
+                    type: 'create_room',
+                    roomId: roomId
                 });
             }
+        }
+
+        function joinRoom() {
+            const roomId = document.getElementById('roomInput').value.trim();
+            if (!roomId) {
+                showRoomError('방 이름을 입력해주세요.');
+                return;
+            }
+
+            if (!/^[a-zA-Z0-9]+$/.test(roomId)) {
+                showRoomError('방 이름은 영어와 숫자로만 구성되어야 합니다.');
+                return;
+            }
+
+            updateStatus('방 참여 중...');
+
+            if (window.wsClient) {
+                window.wsClient.send({
+                    type: 'join_room',
+                    roomId: roomId
+                });
+            }
+        }
+
+        function leaveRoom() {
+            currentRoomId = null;
+            currentRole = null;
+            window.isHost = false;
+
+            // UI 초기화
+            document.getElementById('initialSection').style.display = 'block';
+            document.getElementById('joinedSection').style.display = 'none';
+            document.getElementById('uploadSection').classList.remove('show');
+            document.getElementById('viewerSection').classList.add('hidden');
+            document.getElementById('roomInput').value = '';
+
+            updateStatus('방에서 나갔습니다.');
+
+            // 페이지 새로고침으로 완전 초기화
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        }
+
+        function showRoomError(message) {
+            const errorElement = document.getElementById('roomError');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            setTimeout(() => {
+                errorElement.style.display = 'none';
+            }, 3000);
         }
 
         function updateStatus(message) {
@@ -309,6 +417,15 @@
 
                 if (result.success) {
                     updateStatus(`PDF 업로드 완료: ${result.pdf.originalName}`);
+
+                    // WebSocket으로 PDF 업로드 알림
+                    if (window.wsClient) {
+                        window.wsClient.send({
+                            type: 'upload_pdf',
+                            pdf: result.pdf
+                        });
+                    }
+
                     // 업로드 완료 후 업로드 섹션 숨기기
                     document.getElementById('uploadSection').classList.remove('show');
                 } else {
@@ -365,7 +482,7 @@
 
         // 페이지 컨트롤
         document.getElementById('prevBtn').addEventListener('click', () => {
-            if (isHost && window.pdfViewer) {
+            if (window.isHost && window.pdfViewer) {
                 const currentPage = window.pdfViewer.getCurrentPage();
                 if (currentPage > 1) {
                     changePage(currentPage - 1);
@@ -374,7 +491,7 @@
         });
 
         document.getElementById('nextBtn').addEventListener('click', () => {
-            if (isHost && window.pdfViewer) {
+            if (window.isHost && window.pdfViewer) {
                 const currentPage = window.pdfViewer.getCurrentPage();
                 const totalPages = window.pdfViewer.getTotalPages();
                 if (currentPage < totalPages) {
@@ -384,7 +501,7 @@
         });
 
         function changePage(pageNum) {
-            if (isHost && window.pdfViewer) {
+            if (window.isHost && window.pdfViewer) {
                 const result = window.pdfViewer.goToPage(pageNum);
                 if (result !== null) {
                     // WebSocket으로 페이지 변경 알림 (호스트 자신은 제외하고 뷰어들에게만 전송)
@@ -399,6 +516,36 @@
         }
 
         // WebSocket 이벤트 핸들러들
+        window.addEventListener('room_joined', (event) => {
+            const { roomId, isHost } = event.detail;
+
+            currentRoomId = roomId;
+            currentRole = isHost ? '호스트' : '참가자';
+            window.isHost = isHost;
+
+            // UI 업데이트
+            document.getElementById('initialSection').style.display = 'none';
+            document.getElementById('joinedSection').style.display = 'block';
+            document.getElementById('currentRoomId').textContent = roomId;
+            document.getElementById('currentRole').textContent = currentRole;
+
+            // 호스트인 경우 업로드 섹션 표시
+            if (isHost) {
+                document.getElementById('uploadSection').classList.add('show');
+            }
+
+            // 뷰어 섹션 표시
+            document.getElementById('viewerSection').classList.remove('hidden');
+
+            updateStatus(`${currentRole}로 방 ${roomId}에 참여했습니다.`);
+        });
+
+        window.addEventListener('room_error', (event) => {
+            const { message } = event.detail;
+            updateStatus(`오류: ${message}`);
+            showRoomError(message);
+        });
+
         window.addEventListener('pdf_loaded', async (event) => {
             try {
                 await window.pdfViewer.loadPDF(`/uploads/${event.detail.pdf.filename}`);
@@ -409,7 +556,7 @@
         });
 
         window.addEventListener('page_change', (event) => {
-            if (!isHost && window.pdfViewer) {
+            if (!window.isHost && window.pdfViewer) {
                 window.pdfViewer.goToPage(event.detail.page);
             }
         });
@@ -424,7 +571,7 @@
             }
 
             // 방향키로 페이지 이동 (호스트 모드에서만)
-            if (isHost && window.pdfViewer) {
+            if (window.isHost && window.pdfViewer) {
                 if (event.key === 'ArrowLeft') {
                     // 왼쪽 화살표: 이전 페이지
                     event.preventDefault();
